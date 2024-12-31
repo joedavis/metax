@@ -5,6 +5,9 @@ intended to collect anything useful that comes out of those explorations, as
 well as miscellaneous utility functions that the Zig `std` module doesn't
 provide.
 
+I do not consider this code to be production quality, but intend to clean it up
+at some point in the future.
+
 ## `groupBy`
 
 ### Example usage:
