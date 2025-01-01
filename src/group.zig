@@ -105,6 +105,9 @@ fn SubUnion(T: type, comptime distinguisher: anytype) type {
 }
 
 fn SubType(T: type, comptime distinguisher: anytype) type {
+    // TODO: Need to look into reducing the number of recursive calls, as the number of backward branches
+    // appears to grow super-linearly with respect to the number of groups
+    @setEvalBranchQuota(100000);
     return switch (@typeInfo(T)) {
         .@"union" => SubUnion(T, distinguisher),
         .@"enum" => SubEnum(T, distinguisher),
@@ -113,7 +116,7 @@ fn SubType(T: type, comptime distinguisher: anytype) type {
 }
 
 pub fn groupBy(e: anytype, comptime distinguisher: anytype) SubType(@TypeOf(e), distinguisher) {
-    @setEvalBranchQuota(10000);
+    @setEvalBranchQuota(100000);
     const typ = comptime std.meta.activeTag(@typeInfo(@TypeOf(e)));
 
     inline for (comptime meta.tags(ReturnType(distinguisher))) |tag| {
@@ -127,7 +130,7 @@ pub fn groupBy(e: anytype, comptime distinguisher: anytype) SubType(@TypeOf(e), 
                         break :brk switch (e) {
                             inline else => |v, t| if (comptime @hasField(InnerType, @tagName(t)))
                                 @unionInit(
-                                    InnerUnionFieldType(@TypeOf(e), distinguisher, @tagName(tag)),
+                                    InnerType,
                                     @tagName(t),
                                     v,
                                 )
