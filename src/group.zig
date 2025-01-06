@@ -3,6 +3,7 @@
 const std = @import("std");
 const Type = std.builtin.Type;
 const meta = std.meta;
+const enums = std.enums;
 const ReturnType = @import("./function.zig").ReturnType;
 
 fn SubEnum(T: type, comptime distinguisher: anytype) type {
@@ -47,30 +48,20 @@ fn SubEnum(T: type, comptime distinguisher: anytype) type {
     } });
 }
 
-fn InnerUnionTagType(T: type, comptime distinguisher: anytype, field: [:0]const u8) type {
-    const SubEnumOfUnionTags = SubEnum(meta.Tag(T), distinguisher);
-    return std.meta.fieldInfo(SubEnumOfUnionTags, std.meta.stringToEnum(
-        std.meta.Tag(SubEnumOfUnionTags),
-        field,
-    ).?).type;
-}
-
-fn InnerUnionFieldType(T: type, comptime distinguisher: anytype, field: [:0]const u8) type {
-    const SubUnionType = SubUnion(T, distinguisher);
-    return std.meta.fieldInfo(SubUnionType, std.meta.stringToEnum(
-        std.meta.Tag(SubUnionType),
-        field,
-    ).?).type;
+fn FieldTypeByName(T: type, field: [:0]const u8) type {
+    return meta.FieldType(T, @field(T, field));
 }
 
 fn SubUnion(T: type, comptime distinguisher: anytype) type {
     const Tags = ReturnType(distinguisher);
 
     var fields: []const Type.UnionField = &.{};
+    const SubEnumOfUnionTags = SubEnum(meta.Tag(T), distinguisher);
+    const Fields = std.meta.fields(T);
     inline for (meta.fields(Tags)) |f| {
         var inner_fields: []const Type.UnionField = &.{};
 
-        inline for (std.meta.fields(T)) |tf| {
+        inline for (Fields) |tf| {
             if (std.mem.eql(
                 u8,
                 @tagName(distinguisher(@field(T, tf.name))),
@@ -84,7 +75,7 @@ fn SubUnion(T: type, comptime distinguisher: anytype) type {
         const InnerType = @Type(
             .{ .@"union" = .{
                 .layout = .auto,
-                .tag_type = InnerUnionTagType(T, distinguisher, f.name),
+                .tag_type = FieldTypeByName(SubEnumOfUnionTags, f.name),
                 .fields = inner_fields,
                 .decls = &.{},
             } },
@@ -104,10 +95,15 @@ fn SubUnion(T: type, comptime distinguisher: anytype) type {
     } });
 }
 
+fn SubTypeBranchQuota(comptime distinguisher: anytype) comptime_int {
+    const R = ReturnType(distinguisher);
+    const x = std.meta.fields(R).len;
+    // Coefficients found experimentally, with an additional thousand added for headroom
+    return 15 * (x * x) - 40 * x + 630 + 1000;
+}
+
 fn SubType(T: type, comptime distinguisher: anytype) type {
-    // TODO: Need to look into reducing the number of recursive calls, as the number of backward branches
-    // appears to grow super-linearly with respect to the number of groups
-    @setEvalBranchQuota(100000);
+    @setEvalBranchQuota(SubTypeBranchQuota(distinguisher));
     return switch (@typeInfo(T)) {
         .@"union" => SubUnion(T, distinguisher),
         .@"enum" => SubEnum(T, distinguisher),
@@ -116,17 +112,17 @@ fn SubType(T: type, comptime distinguisher: anytype) type {
 }
 
 pub fn groupBy(e: anytype, comptime distinguisher: anytype) SubType(@TypeOf(e), distinguisher) {
-    @setEvalBranchQuota(100000);
     const typ = comptime std.meta.activeTag(@typeInfo(@TypeOf(e)));
 
+    const Sub = SubType(@TypeOf(e), distinguisher);
     inline for (comptime meta.tags(ReturnType(distinguisher))) |tag| {
         if (distinguisher(e) == tag) {
             return @unionInit(
-                SubType(@TypeOf(e), distinguisher),
+                Sub,
                 @tagName(tag),
                 switch (typ) {
                     inline .@"union" => brk: {
-                        const InnerType = InnerUnionFieldType(@TypeOf(e), distinguisher, @tagName(tag));
+                        const InnerType = meta.TagPayloadByName(Sub, @tagName(tag));
                         break :brk switch (e) {
                             inline else => |v, t| if (comptime @hasField(InnerType, @tagName(t)))
                                 @unionInit(
@@ -138,7 +134,7 @@ pub fn groupBy(e: anytype, comptime distinguisher: anytype) SubType(@TypeOf(e), 
                                 unreachable,
                         };
                     },
-                    inline .@"enum" => @enumFromInt(@intFromEnum(e)),
+                    inline .@"enum" => std.enums.nameCast(Sub, e),
                     else => @compileError("groupBy only accepts unions or enums"),
                 },
             );
@@ -154,7 +150,7 @@ test "Union" {
         ret,
         add,
 
-        pub const Arity = enum { nullary, unary, binary };
+        pub const Arity = enum { nullary, unary, binary, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t };
 
         pub fn arity(tag: std.meta.Tag(@This())) Arity {
             return switch (tag) {
@@ -195,6 +191,7 @@ test "Union" {
                     .add => try stack.append(x + y),
                 }
             },
+            else => {},
         }
     }
 
