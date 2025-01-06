@@ -95,7 +95,7 @@ fn SubUnion(T: type, comptime distinguisher: anytype) type {
     } });
 }
 
-fn SubTypeBranchQuota(comptime distinguisher: anytype) comptime_int {
+fn subTypeBranchQuota(comptime distinguisher: anytype) comptime_int {
     const R = ReturnType(distinguisher);
     const x = std.meta.fields(R).len;
     // Coefficients found experimentally, with an additional thousand added for headroom
@@ -103,7 +103,7 @@ fn SubTypeBranchQuota(comptime distinguisher: anytype) comptime_int {
 }
 
 fn SubType(T: type, comptime distinguisher: anytype) type {
-    @setEvalBranchQuota(SubTypeBranchQuota(distinguisher));
+    @setEvalBranchQuota(subTypeBranchQuota(distinguisher));
     return switch (@typeInfo(T)) {
         .@"union" => SubUnion(T, distinguisher),
         .@"enum" => SubEnum(T, distinguisher),
@@ -150,7 +150,7 @@ test "Union" {
         ret,
         add,
 
-        pub const Arity = enum { nullary, unary, binary, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t };
+        pub const Arity = enum { nullary, unary, binary };
 
         pub fn arity(tag: std.meta.Tag(@This())) Arity {
             return switch (tag) {
@@ -191,7 +191,6 @@ test "Union" {
                     .add => try stack.append(x + y),
                 }
             },
-            else => {},
         }
     }
 
